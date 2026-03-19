@@ -12,13 +12,13 @@ RUN mvn clean package
 # ====== Etapa 2: Fase de ejecución (con la que generará la imagen) ======
 # En teoría sólo necesitamos la JRE para ejecutar la aplicación (ojo, a veces puede dar problemas y se usa la JDK )
 # No se necesita el entorno de construcción completo (Maven + JDK + src), sólo el resultado de la construcción (el .jar) y un entorno de ejecución (JRE)
-FROM eclipse-temurin:23-jre as imagen_ejecucion
+FROM eclipse-temurin:23-jre AS imagen_ejecucion
 
 WORKDIR /app
 
 # Copia el jar generado: lo que se obtendría (aaee_mapamundi-0.0.1.jar según el pom.xml) se copia como app.jar 
 # LA idea es simplificar el comando de arranque
-COPY --from=builder /app/target/*.jar app.jar
+COPY --from=imagen_construccion /app/target/*.jar app.jar
 
 # Puerto típico de Spring Boot (se podría cambiar si la aplicación usa otro)
 EXPOSE 8080
