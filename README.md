@@ -1,99 +1,113 @@
-# Uso de Docker y Docker Compose
+# Uso de Docker
 
-Este proyecto utiliza **Docker** para contenerizar la aplicación Spring Boot y **Docker Compose** para levantar la aplicación junto con MySQL.
+Este proyecto utiliza Docker para empaquetar y ejecutar la aplicación Spring Boot de forma aislada, garantizando que funcione igual en cualquier entorno.
 
-## Conceptos Clave
+## Conceptos principales
 
-### Imágenes (`image`)
-Contienen el sistema operativo, JDK/JRE y la aplicación empaquetada (`.jar`).
+### Docker Engine
+Es el motor de Docker, el servicio que construye imágenes, ejecuta contenedores y gestiona recursos (redes, volúmenes, etc.). Es el "runtime" que hace que todo funcione.
 
-### Contenedores (`container`)
-Instancias de las imágenes que se ejecutan de forma aislada.
-Se pueden asignar nombres con `--name` para facilitar su gestión.
+### Imagen (`image`)
+Plantilla inmutable que contiene el sistema base, el entorno de ejecución (JDK/JRE) y la aplicación (`.jar`). Se crea a partir de un `Dockerfile`.
 
-### Multi-stage build
-- **Stage 1**: build de Maven para generar el `.jar`
-- **Stage 2**: runtime con JRE/JDK ligero
+### Contenedor (`container`)
+Instancia en ejecución de una imagen. Es aislado del sistema, ligero (comparte el kernel del host) y efímero (se puede borrar y recrear fácilmente).
 
-Permite que la imagen final sea **más ligera** y solo contenga lo necesario para ejecutar la app.
+### Dockerfile
+Un [Dockerfile](./Dockerfile) es un fichero de texto que contiene las instrucciones para construir una imagen Docker.
 
-### Puertos (`ports`)
-Se mapean del contenedor al host con el formato `"host:container"`.
+- Define el entorno de ejecución de la aplicación: sistema base, dependencias y cómo arrancar la app.
+- Es reproducible y versionable, lo que garantiza que la imagen se construya igual en cualquier máquina.
+- En proyectos Spring Boot, suele usar multi-stage build para separar la fase de compilación de la de ejecución.
 
-```yaml
-ports:
-  - "8080:8080"  # acceso a Spring Boot desde el navegador
+#### Dockerfile (multi-stage)
+
+- **Etapa 1 (construcción):** compila la aplicación con Maven
+- **Etapa 2 (ejecución):** ejecuta solo el `.jar` con un entorno ligero
+
+```dockerfile
+# Etapa 1: construcción
+FROM maven:3.9-eclipse-temurin-23 AS imagen_construccion
+
+WORKDIR /app
+COPY pom.xml .
+COPY src ./src
+
+RUN mvn clean package
+
+# Etapa 2: ejecución
+FROM eclipse-temurin:23-jre AS imagen_ejecucion
+
+WORKDIR /app
+
+COPY --from=imagen_construccion /app/target/*.jar app.jar
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
 
-### Variables de entorno (`environment`)
-Configuran la aplicación y servicios externos como la conexión a MySQL.
+**Qué está pasando:**
 
-```yaml
-environment:
-  SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/mapamundi
-  SPRING_DATASOURCE_USERNAME: root
-  SPRING_DATASOURCE_PASSWORD: secret
+1. **Build:** se compila el proyecto y se genera el `.jar`
+2. **Separación de responsabilidades:** Maven y el código fuente quedan solo en la etapa de build; el runtime solo contiene JRE y el `.jar`
+3. **Optimización:** la imagen final es más ligera, con menor superficie de error y mayor seguridad
+
+## Ejecución y conceptos prácticos
+
+**Puertos** — permiten acceder a la aplicación desde fuera del contenedor:
+```bash
+-p 8080:8080
 ```
 
-### Volúmenes (`volumes`)
-Persisten datos fuera del contenedor. Hay dos tipos:
-
-- **Bind mounts**: montan una ruta específica del host (`./data:/var/lib/mysql`). El contenido depende de lo que haya en esa ruta local.
-- **Named volumes**: gestionados por Docker (`db_data:/var/lib/mysql`), declarados al final del `docker-compose.yml`. Son la opción recomendada para bases de datos.
-
-```yaml
-volumes:
-  db_data:/var/lib/mysql
-
-# Al final del docker-compose.yml:
-volumes:
-  db_data:
+**Variables de entorno** — configuran la aplicación sin modificar el código:
+```bash
+-e SPRING_DATASOURCE_URL=...
 ```
 
-### Redes (`networks`)
-Docker Compose crea automáticamente una red interna para que los servicios se comuniquen por nombre (`db` en lugar de IP), permitiendo usar `jdbc:mysql://db:3306/...` en Spring Boot.
-
-### Dependencias entre servicios (`depends_on`)
-Controla el orden de arranque, pero **solo garantiza que el contenedor haya iniciado**, no que el servicio esté listo para aceptar conexiones. MySQL puede tardar unos segundos en estar operativo, lo que puede provocar fallos en Spring Boot al arrancar.
-
-Para esperar a que MySQL esté realmente listo, se combina con `healthcheck`:
-
-```yaml
-db:
-  image: mysql:8
-  healthcheck:
-    test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-    interval: 10s
-    timeout: 5s
-    retries: 5
-
-app:
-  depends_on:
-    db:
-      condition: service_healthy
+**Volúmenes** — persisten datos fuera del contenedor:
+```bash
+-v /ruta/local:/ruta/contenedor
 ```
 
 ## Comandos básicos
 
 ```bash
-# Construir imagen Docker (desde la carpeta en la que está el fichero Dockerfile)
+# Construir la imagen Docker a partir del Dockerfile
+# -t mapamundi-app  → asigna un nombre (tag) a la imagen
+# .                 → indica el contexto de construcción (directorio actual, donde está el Dockerfile)
 docker build -t mapamundi-app .
 
-# Lanzar un contenedor asociado a una imagen Docker
-docker run -p 8080:8080 --name mapamundi_sb_xxx mapamundi-app
+# Ejecutar un contenedor a partir de la imagen creada
+# -p 8080:8080      → mapea el puerto 8080 del host al 8080 del contenedor
+# --name mapamundi_sb → asigna un nombre al contenedor para poder gestionarlo fácilmente
+# mapamundi-app     → nombre de la imagen que se va a ejecutar
+docker run -p 8080:8080 --name mapamundi_sb mapamundi-app
 
-# Ver contenedores en ejecución
+# Ver contenedores (en ejecución / todos)
 docker ps
+docker ps -a
 
-# Levantar servicios con Docker Compose (desde la carpeta en la que está el fichero docker-compose.yml)
-docker compose up -d
+# Ver logs
+docker logs -f mapamundi_sb
 
-# Seguir los logs en tiempo real (muy útil en desarrollo)
-docker compose logs -f
+# Detener y eliminar contenedores
+docker stop mapamundi_sb
+docker rm mapamundi_sb
 
-# Detener contenedores
-docker compose down
+# Eliminar imagen
+docker rmi mapamundi-app
 ```
+
+## Resumen rápido
+
+| Concepto | Descripción |
+|---|---|
+| Docker Engine | Ejecuta y gestiona todo |
+| Imagen | Plantilla inmutable de la aplicación |
+| Contenedor | Instancia en ejecución de una imagen |
+| Dockerfile | Instrucciones para construir la imagen |
+| Multi-stage | Imágenes más ligeras y eficientes |
 
 ---
 Fuentes: [ChatGPT](https://chat.openai.com) + [Claude](https://claude.ai)
