@@ -20,6 +20,10 @@ WORKDIR /app
 # LA idea es simplificar el comando de arranque
 COPY --from=imagen_construccion /app/target/*.jar app.jar
 
+# Variables de entorno (se cargan en fichero .env)
+ENV DB_USER="nombre_usuario_bbdd"
+ENV DB_PASSWORD="contraseña_usuario_bbdd"
+
 # Puerto típico de Spring Boot (se podría cambiar si la aplicación usa otro)
 EXPOSE 8080
 

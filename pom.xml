@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.lapaloma.mapamundi</groupId>
   <artifactId>aaee_mapamundi</artifactId>
-  <version>0.0.1</version>
+  <version>0.0.2</version>
 	
 	<name>Prueba de Springboot</name>
 	<description>Proyecto para poder probar el funcionamiento de SpringBoot</description>

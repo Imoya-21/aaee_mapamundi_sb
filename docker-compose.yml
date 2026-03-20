@@ -15,10 +15,12 @@ services:
     hostname: mysql.vdlp
     ports:
       - "3306:3306"
-    environment:
-      MYSQL_ROOT_PASSWORD: mysql_123
-      MYSQL_USER: isidoronm
-      MYSQL_PASSWORD: mm123
+	env_file:
+	  - .env
+	environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
       MYSQL_DATABASE: mapa_mundi
     volumes:
       - ./mysql/conf.d:/etc/mysql/conf.d

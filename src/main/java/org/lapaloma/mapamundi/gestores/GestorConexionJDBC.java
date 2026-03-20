@@ -15,8 +15,8 @@ public class GestorConexionJDBC {
         // Datos URL
         String urlBBDD = GestorFicheroConfiguracion.obtenerValor("jdbc.url");
 
-        String usuario = GestorFicheroConfiguracion.obtenerValor("jdbc.usuario");
-        String contrasenya = GestorFicheroConfiguracion.obtenerValor("jdbc.password");
+        String usuario = System.getenv("DB_USER");
+        String contrasenya = System.getenv("DB_PASSWORD");
 
         String claseDriver = GestorFicheroConfiguracion.obtenerValor("jdbc.driver");
         Class.forName(claseDriver);

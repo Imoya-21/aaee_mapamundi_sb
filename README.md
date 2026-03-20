@@ -1,113 +1,169 @@
-# Uso de Docker
+# Gestión de secretos en distintos entornos (Java + Docker + CI/CD)
 
-Este proyecto utiliza Docker para empaquetar y ejecutar la aplicación Spring Boot de forma aislada, garantizando que funcione igual en cualquier entorno.
+Este documento resume cómo manejar de manera segura credenciales y secretos en distintos entornos: desarrollo local, Docker, docker-compose y CI/CD (GitHub Actions).
 
-## Conceptos principales
+---
 
-### Docker Engine
-Es el motor de Docker, el servicio que construye imágenes, ejecuta contenedores y gestiona recursos (redes, volúmenes, etc.). Es el "runtime" que hace que todo funcione.
+## 1. Desarrollo local (Java)
 
-### Imagen (`image`)
-Plantilla inmutable que contiene el sistema base, el entorno de ejecución (JDK/JRE) y la aplicación (`.jar`). Se crea a partir de un `Dockerfile`.
+Leer secretos usando `System.getenv()`:
 
-### Contenedor (`container`)
-Instancia en ejecución de una imagen. Es aislado del sistema, ligero (comparte el kernel del host) y efímero (se puede borrar y recrear fácilmente).
+```java
+String user = System.getenv("DB_USER");
+String password = System.getenv("DB_PASSWORD");
 
-### Dockerfile
-Un [Dockerfile](./Dockerfile) es un fichero de texto que contiene las instrucciones para construir una imagen Docker.
+if (user == null || password == null) {
+    throw new RuntimeException("Faltan variables de entorno DB_USER / DB_PASSWORD");
+}
+```
 
-- Define el entorno de ejecución de la aplicación: sistema base, dependencias y cómo arrancar la app.
-- Es reproducible y versionable, lo que garantiza que la imagen se construya igual en cualquier máquina.
-- En proyectos Spring Boot, suele usar multi-stage build para separar la fase de compilación de la de ejecución.
+Definir las variables en la sesión activa:
 
-#### Dockerfile (multi-stage)
+**Windows (PowerShell):**
+```powershell
+$env:DB_USER="mi_usuario"
+$env:DB_PASSWORD="mi_password"
+```
 
-- **Etapa 1 (construcción):** compila la aplicación con Maven
-- **Etapa 2 (ejecución):** ejecuta solo el `.jar` con un entorno ligero
+**Linux / Mac / WSL:**
+```bash
+export DB_USER=mi_usuario
+export DB_PASSWORD=mi_password
+```
+
+> Las variables solo existen en la sesión activa. Configura persistencia si es necesario (`.bashrc`, `.zshrc`, variables de entorno del sistema).
+
+---
+
+## 2. Dockerfile
+
+Nunca incluir secretos directamente. Solo se declaran variables vacías como documentación:
 
 ```dockerfile
-# Etapa 1: construcción
-FROM maven:3.9-eclipse-temurin-23 AS imagen_construccion
-
-WORKDIR /app
-COPY pom.xml .
-COPY src ./src
-
-RUN mvn clean package
-
-# Etapa 2: ejecución
-FROM eclipse-temurin:23-jre AS imagen_ejecucion
-
-WORKDIR /app
-
-COPY --from=imagen_construccion /app/target/*.jar app.jar
-
-EXPOSE 8080
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Documentación de variables esperadas en runtime
+ENV DB_USER=""
+ENV DB_PASSWORD=""
 ```
 
-**Qué está pasando:**
+Los valores reales se pasan al ejecutar el contenedor. La aplicación sigue usando `System.getenv()` para leerlos.
 
-1. **Build:** se compila el proyecto y se genera el `.jar`
-2. **Separación de responsabilidades:** Maven y el código fuente quedan solo en la etapa de build; el runtime solo contiene JRE y el `.jar`
-3. **Optimización:** la imagen final es más ligera, con menor superficie de error y mayor seguridad
+---
 
-## Ejecución y conceptos prácticos
+## 3. Docker (runtime)
 
-**Puertos** — permiten acceder a la aplicación desde fuera del contenedor:
+**Opción A — En línea:**
 ```bash
--p 8080:8080
+docker run -e DB_USER=mi_usuario -e DB_PASSWORD=mi_password -p 8080:8080 mi-imagen
 ```
 
-**Variables de entorno** — configuran la aplicación sin modificar el código:
-```bash
--e SPRING_DATASOURCE_URL=...
-```
+**Opción B — Archivo `.env` (recomendado):**
 
-**Volúmenes** — persisten datos fuera del contenedor:
-```bash
--v /ruta/local:/ruta/contenedor
+Archivo `.env`:
 ```
-
-## Comandos básicos
+DB_USER=mi_usuario
+DB_PASSWORD=mi_password
+```
 
 ```bash
-# Construir la imagen Docker a partir del Dockerfile
-# -t mapamundi-app  → asigna un nombre (tag) a la imagen
-# .                 → indica el contexto de construcción (directorio actual, donde está el Dockerfile)
-docker build -t mapamundi-app .
-
-# Ejecutar un contenedor a partir de la imagen creada
-# -p 8080:8080      → mapea el puerto 8080 del host al 8080 del contenedor
-# --name mapamundi_sb → asigna un nombre al contenedor para poder gestionarlo fácilmente
-# mapamundi-app     → nombre de la imagen que se va a ejecutar
-docker run -p 8080:8080 --name mapamundi_sb mapamundi-app
-
-# Ver contenedores (en ejecución / todos)
-docker ps
-docker ps -a
-
-# Ver logs
-docker logs -f mapamundi_sb
-
-# Detener y eliminar contenedores
-docker stop mapamundi_sb
-docker rm mapamundi_sb
-
-# Eliminar imagen
-docker rmi mapamundi-app
+docker run --env-file .env -p 8080:8080 mi-imagen
 ```
 
-## Resumen rápido
+> Añade `.env` a `.gitignore` para que nunca se suba al repositorio.
 
-| Concepto | Descripción |
-|---|---|
-| Docker Engine | Ejecuta y gestiona todo |
-| Imagen | Plantilla inmutable de la aplicación |
-| Contenedor | Instancia en ejecución de una imagen |
-| Dockerfile | Instrucciones para construir la imagen |
-| Multi-stage | Imágenes más ligeras y eficientes |
+---
 
+## 4. Docker Compose
+
+**Opción A — `env_file`:**
+```yaml
+version: "3.8"
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      - db
+
+  db:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: mi_base_datos
+    ports:
+      - "3306:3306"
+```
+
+**Opción B — Interpolación de variables:**
+```yaml
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+```
+
+> `depends_on` solo espera a que el contenedor arranque, no a que MySQL esté listo para aceptar conexiones. Considera usar healthchecks o lógica de retry en la aplicación.
+
+---
+
+## 5. CI/CD — GitHub Actions
+
+Definir los secretos en el repositorio: **Settings → Secrets and variables → Actions**.
+
+```yaml
+name: Build & Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build Docker image
+        run: docker build -t mi-app .
+
+      - name: Run container with secrets
+        run: |
+          docker run \
+            -e DB_USER=${{ secrets.DB_USER }} \
+            -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            mi-app
+```
+
+> Nunca uses `echo ${{ secrets.DB_PASSWORD }}` en los logs: GitHub lo enmascara, pero es una mala práctica.
+
+---
+
+## 6. Buenas prácticas generales
+
+- No subir `.env` al repositorio.
+- No hardcodear credenciales en `config.properties` ni en el código.
+- No incluir secretos en la imagen Docker.
+- Documentar las variables necesarias sin poner valores reales (p. ej., en el `README`).
+- Para producción avanzada: considerar **Secret Manager** (AWS Secrets Manager, HashiCorp Vault, Azure Key Vault).
+
+---
+
+## 7. Tabla comparativa por entorno
+
+| Entorno | Mecanismo | Dónde se definen | ¿Se sube al repo? |
+|---|---|---|---|
+| Desarrollo local | `System.getenv()` | Variables de sesión / sistema | No |
+| Dockerfile | `ENV` (vacío) | El propio Dockerfile | Sí (sin valores) |
+| Docker runtime | `-e` / `--env-file` | Línea de comandos / `.env` | No (`.env` en `.gitignore`) |
+| Docker Compose | `env_file` / `environment` | `.env` / `docker-compose.yml` | No (`.env` en `.gitignore`) |
+| GitHub Actions | `secrets.*` | Settings del repositorio | No (gestionado por GitHub) |
 ---
 Fuentes: [ChatGPT](https://chat.openai.com) + [Claude](https://claude.ai)
