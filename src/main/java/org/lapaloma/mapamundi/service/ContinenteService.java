@@ -63,7 +63,7 @@ public class ContinenteService {
         List<Continente> lista = continenteDAO.obtenerContinentePorNombre(nombre);
 
     	// Al comentar este código desaparece el error
-        lista =null;
+        //lista =null;
         
         if (lista == null || lista.isEmpty()) {
             throw new ContinenteNoEncontradoException(
