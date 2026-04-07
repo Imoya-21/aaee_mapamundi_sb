@@ -173,61 +173,54 @@ Definir en el repositorio (**Settings → Secrets and variables → Actions**):
 - **Secretos**: `DB_USER`, `DB_PASSWORD` → en la pestaña *Secrets*.
 
 ```yaml
-name: Build, Test and Push Docker Image
+name: Primer flujo de trabajo CI/CD (Build, Test and Push Docker Image) para Ampliación de Entornos de Desarrollo
 
-# ===== Triggers del workflow =====
+# ===== Disparadores del workflow =====
 on:
   push:
     branches:
-      - '**'       # Se ejecuta en cualquier rama al hacer push
-    # paths:      # opcional: limitar a ciertos archivos
-    #   - 'src/**'
-    #   - 'Dockerfile'
+      - '**' # Cualquier rama 
 
+# ===== Permisos del token automático de GitHub para que pueda "subir"(push del paso 4.) la imagen docker generada en el paso 3 al área de registro de GitHub ghcr.io/profies/aaee_mapamundi_sb =====
+permissions:
+  contents: read
+  packages: write
+
+# ===== Tareas del workflow =====
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest   # Runner proporcionado por GitHub, con Docker y Linux listo
+    runs-on: ubuntu-latest
 
-    # ===== Pasos del job =====
     steps:
-      # ---- 1. Obtener el código del repositorio ----
+    
+      # 1. Descarga código
       - name: Checkout code
         uses: actions/checkout@v3
-        # Descarga el código fuente del commit que disparó el workflow
 
-      # ---- 2. Preparar JDK y Maven ----
-      - name: Set up JDK
+      # 2. JDK/Maven para tests previos
+      - name: Configución pasar TEST
         uses: actions/setup-java@v3
         with:
           distribution: temurin
           java-version: 23
-        # Necesario si quieres compilar y testear tu proyecto Spring Boot
 
-      # ---- 3. Construir el proyecto con Maven ----
-      - name: Build Maven project
+      - name: Construir proyecto con Maven
         run: mvn clean package
-        # Ejecuta la construcción del jar y tests (si no usas -DskipTests)
-        # El resultado se genera en target/*.jar
 
-      # ---- 4. Construir la imagen Docker ----
+      # 3. Construir la imagen Docker usando el Dockerfile
       - name: Build Docker image
         run: docker build -t ghcr.io/${{ github.repository }}:latest .
-        # Construye la imagen usando el Dockerfile del repositorio
-        # La etiqueta apunta a GitHub Container Registry (GHCR)
 
-      # ---- 5. Loguearse en GHCR ----
+      # 4. Push a GHCR (GitHub Container Registry)
       - name: Push Docker image
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}           # Usuario que disparó el workflow
-          password: ${{ secrets.GITHUB_TOKEN }}  # Token temporal proporcionado por GitHub
-        # Necesario para poder subir la imagen a GHCR
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ---- 6. Subir la imagen al registro ----
       - name: Push image
         run: docker push ghcr.io/${{ github.repository }}:latest
-        # Envía la imagen recién construida a GHCR con la etiqueta "latest"
 ```
 
 > Nunca uses `echo ${{ secrets.DB_PASSWORD }}` en logs. GitHub lo enmascara, pero sigue siendo mala práctica.
