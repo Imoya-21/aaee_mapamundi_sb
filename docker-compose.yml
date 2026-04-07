@@ -1,11 +1,9 @@
 services:
   app:
-    image: ghcr.io/profies/aaee_mapamundi_sb:latest
-    container_name: aaee_mapamundi_app_xxx
+    image: docker pull ghcr.io/imoya-21/aaee_mapamundi_sb:latest
+    container_name: aaee_mapamundi_app_imy
     ports:
       - "8080:8080"
     env_file:
       - .env
-    depends_on:
-      - db
     restart: always
