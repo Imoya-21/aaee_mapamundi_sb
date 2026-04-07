@@ -1,6 +1,6 @@
 services:
   app:
-    image: docker pull ghcr.io/imoya-21/aaee_mapamundi_sb:latest
+    image: ghcr.io/imoya-21/aaee_mapamundi_sb:latest
     container_name: aaee_mapamundi_app_imy
     ports:
       - "8080:8080"
